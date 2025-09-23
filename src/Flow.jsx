@@ -11,7 +11,7 @@ import 'reactflow/dist/style.css';
 
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Plus, Settings2, LayoutGrid } from 'lucide-react';
+import { Plus, Settings2, LayoutGrid, Download } from 'lucide-react';
 
 import DataNode from './components/nodes/DataNode';
 import ProcessNode from './components/nodes/ProcessNode';
@@ -582,6 +582,133 @@ function Flow() {
     setNodes(newNodes);
   }, [nodes, edges, setNodes]);
 
+  // Export structured JSON function
+  const exportFlowJSON = useCallback(() => {
+    // Analyze flow structure
+    const dataNodes = nodes.filter(n => n.type === 'dataNode');
+    const processNodes = nodes.filter(n => n.type === 'processNode');
+    
+    const rawInputs = dataNodes.filter(n => n.data.type === 'Raw');
+    const intermediateData = dataNodes.filter(n => n.data.type === 'Intermediate');
+    const outputs = dataNodes.filter(n => n.data.type === 'Output');
+    
+    const mainProcesses = processNodes.filter(n => n.data.processType === 'main-process');
+    const nestedProcesses = processNodes.filter(n => n.data.processType === 'nested-process');
+    
+    // Build dependency map
+    const dependencyMap = {};
+    edges.forEach(edge => {
+      if (!dependencyMap[edge.target]) {
+        dependencyMap[edge.target] = [];
+      }
+      dependencyMap[edge.target].push(edge.source);
+    });
+    
+    // Create structured export
+    const exportData = {
+      metadata: {
+        flowName: "KYB/KYC Process Flow",
+        exportDate: new Date().toISOString(),
+        version: "1.0",
+        totalNodes: nodes.length,
+        totalEdges: edges.length,
+        statistics: {
+          rawInputs: rawInputs.length,
+          mainProcesses: mainProcesses.length,
+          nestedProcesses: nestedProcesses.length,
+          intermediateData: intermediateData.length,
+          outputs: outputs.length
+        }
+      },
+      
+      flow: {
+        rawInputs: rawInputs.map(node => ({
+          id: node.id,
+          name: node.data.name,
+          description: node.data.description,
+          dataType: node.data.dataType,
+          schema: node.data.schema,
+          position: node.position
+        })),
+        
+        processes: {
+          main: mainProcesses.map(node => ({
+            id: node.id,
+            name: node.data.name,
+            description: node.data.description,
+            platform: node.data.platform,
+            checks: node.data.checks,
+            inputs: node.data.inputs || [],
+            dependencies: dependencyMap[node.id] || [],
+            selectedFields: node.data.selectedFields || {},
+            position: node.position
+          })),
+          
+          nested: nestedProcesses.map(node => ({
+            id: node.id,
+            name: node.data.name,
+            description: node.data.description,
+            platform: node.data.platform,
+            checks: node.data.checks,
+            inputs: node.data.inputs || [],
+            dependencies: dependencyMap[node.id] || [],
+            reusable: true,
+            position: node.position
+          }))
+        },
+        
+        intermediateData: intermediateData.map(node => ({
+          id: node.id,
+          name: node.data.name,
+          description: node.data.description,
+          dataType: node.data.dataType,
+          source: node.data.source,
+          schema: node.data.schema,
+          position: node.position
+        })),
+        
+        outputs: outputs.map(node => ({
+          id: node.id,
+          name: node.data.name,
+          description: node.data.description,
+          dataType: node.data.dataType,
+          source: node.data.source,
+          schema: node.data.schema,
+          position: node.position
+        }))
+      },
+      
+      connections: edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceNode: nodes.find(n => n.id === edge.source)?.data.name,
+        targetNode: nodes.find(n => n.id === edge.target)?.data.name
+      })),
+      
+      processFlow: {
+        entryPoints: rawInputs.map(n => n.id),
+        exitPoints: outputs.map(n => n.id),
+        criticalPath: [], // Could be calculated based on longest dependency chain
+        parallelProcesses: [] // Could identify processes that can run in parallel
+      }
+    };
+    
+    // Download JSON file
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kyb-flow-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    URL.revokeObjectURL(url);
+  }, [nodes, edges]);
+
   // Create new node
   const createNode = (nodeData) => {
     const id = generateId(nodeData.nodeType);
@@ -633,6 +760,15 @@ function Flow() {
               className="mr-2"
             >
               <LayoutGrid className="w-4 h-4 mr-1"/>Format
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={exportFlowJSON}
+              className="mr-2"
+            >
+              <Download className="w-4 h-4 mr-1"/>Export JSON
             </Button>
 
             <Button
