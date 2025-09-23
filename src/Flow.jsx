@@ -25,203 +25,385 @@ const nodeTypes = {
   processNode: ProcessNode,
 };
 
-// Initial sample nodes based on KYB schema
+// Initial nodes based on real Feathery KYB process data
 const initialNodes = [
+  // Raw Input Data Nodes
   {
-    id: 'kyb-raw-data',
+    id: 'business-description-input',
     type: 'dataNode',
     position: { x: 50, y: 50 },
     data: {
-      name: 'KYB Raw Data',
-      description: 'Complete KYB dataset with business, directors, shareholders, etc.',
+      name: 'Business Description Input',
+      description: 'Raw business description from user form',
+      type: 'Raw',
+      dataType: 'Text',
+      source: null,
+      schema: {
+        BusinessDescription3: 'string',
+        ProductExample3: 'string',
+        customers: 'string',
+        WebsiteUrl3: 'string'
+      }
+    },
+  },
+  {
+    id: 'website-input',
+    type: 'dataNode',
+    position: { x: 50, y: 200 },
+    data: {
+      name: 'Website URL Input',
+      description: 'Business webpage URL for analysis',
+      type: 'Raw',
+      dataType: 'Text',
+      source: null,
+      schema: {
+        WebsiteUrl3: 'string'
+      }
+    },
+  },
+  {
+    id: 'pob-upload',
+    type: 'dataNode',
+    position: { x: 50, y: 350 },
+    data: {
+      name: 'Proof of Business Upload',
+      description: 'Uploaded POB documents (bank statements, screenshots, etc.)',
       type: 'Raw',
       dataType: 'JSON',
       source: null,
       schema: {
-        business: {
-          business: { id: 'number', name: 'string', registration_number: 'string', country_id: 'number' },
-          properties: [{ name: 'string', key: 'string', value: 'string' }],
-          addresses: { id: 'number', address: 'string', country_id: 'number' },
-          officers: { id: 'number', name: 'string', nationality: 'string', apps: 'array' },
-          shareholders: { id: 'number', name: 'string', ownership_percentage: 'number' }
-        },
-        directors: [{ id: 'number', full_name: 'string', nationality_id: 'number', addresses: 'array', kyc_check: 'object' }],
-        jotform_submissions: [{ id: 'number', data: 'object' }],
-        truebiz: { data: 'object', recommendation: 'object' },
-        kyb: { id: 'number', state_code: 'string', risk_level: 'number' },
-        lexisnexis: [{ id: 'number', decision_code: 'string', rule_outcomes: 'array' }]
+        document_type: 'string',
+        file_url: 'string',
+        upload_timestamp: 'string',
+        file_size: 'number'
       }
     },
   },
   {
-    id: 'extract-ubos',
+    id: 'id-documents',
+    type: 'dataNode',
+    position: { x: 50, y: 500 },
+    data: {
+      name: 'ID Documents',
+      description: 'Uploaded ID documents for directors and UBOs',
+      type: 'Raw',
+      dataType: 'JSON',
+      source: null,
+      schema: {
+        document_type: 'string',
+        person_name: 'string',
+        person_role: 'string',
+        id_number: 'string',
+        expiry_date: 'string',
+        file_url: 'string'
+      }
+    },
+  },
+  {
+    id: 'loa-document',
+    type: 'dataNode',
+    position: { x: 50, y: 650 },
+    data: {
+      name: 'Letter of Authorization',
+      description: 'LOA document with director details',
+      type: 'Raw',
+      dataType: 'JSON',
+      source: null,
+      schema: {
+        director_name: 'string',
+        director_email: 'string',
+        loa_file_url: 'string',
+        signed_date: 'string'
+      }
+    },
+  },
+
+  // Main Process Nodes
+  {
+    id: 'website-analysis',
+    type: 'processNode',
+    position: { x: 400, y: 200 },
+    data: {
+      name: 'Website Analysis',
+      description: 'TrueBiz website analysis for industry classification and POB validation',
+      processType: 'main-process',
+      platform: ['TrueBiz'],
+      checks: [
+        'Analyze website content for business activities',
+        'Extract industry information',
+        'Validate business name consistency',
+        'Check website responsiveness and SSL'
+      ],
+      inputs: ['website-input'],
+    },
+  },
+  {
+    id: 'industry-selection',
     type: 'processNode',
     position: { x: 400, y: 50 },
     data: {
-      name: 'Extract UBOs',
-      description: 'Identify Ultimate Beneficial Owners from directors and shareholders data',
+      name: 'Industry Selection',
+      description: 'AI-powered industry recommendation to reduce drop-off',
       processType: 'main-process',
-      platform: ['Dash'],
+      platform: ['n8n', 'OpenAI'],
       checks: [
-        'Extract directors with >25% ownership',
-        'Extract shareholders with >25% ownership', 
-        'Merge and deduplicate UBO list',
-        'Validate UBO completeness'
+        'Analyze business description for industry signals',
+        'Cross-reference with product examples',
+        'Generate top 3 industry recommendations',
+        'Validate against website analysis results'
       ],
-      inputs: ['kyb-raw-data'],
+      inputs: ['business-description-input', 'truebiz-results'],
     },
   },
   {
-    id: 'ubo-list',
+    id: 'business-vagueness-check',
+    type: 'processNode',
+    position: { x: 400, y: 120 },
+    data: {
+      name: 'Business Description Vagueness Check',
+      description: 'Check business description precision to reduce RFIs',
+      processType: 'main-process',
+      platform: ['OpenAI'],
+      checks: [
+        'Calculate description precision score',
+        'Compare business description vs product examples',
+        'Detect vague or generic descriptions',
+        'Generate nudge if precision < 30%'
+      ],
+      inputs: ['business-description-input'],
+    },
+  },
+  {
+    id: 'pob-check',
+    type: 'processNode',
+    position: { x: 400, y: 350 },
+    data: {
+      name: 'POB Check',
+      description: 'Comprehensive proof of business document validation',
+      processType: 'main-process',
+      platform: ['n8n'],
+      checks: [
+        'Classify document type (Bank Statement vs Others)',
+        'Verify company name matches application',
+        'Check document is not invoice or BRC',
+        'Validate transaction count and dates',
+        'Contextual business model validation'
+      ],
+      inputs: ['pob-upload', 'business-description-input', 'truebiz-results'],
+    },
+  },
+  {
+    id: 'id-check',
+    type: 'processNode',
+    position: { x: 400, y: 500 },
+    data: {
+      name: 'ID Check',
+      description: 'Identity document validation and verification',
+      processType: 'main-process',
+      platform: ['Dash'],
+      checks: [
+        'Validate ID document is not expired',
+        'Check image quality and lighting',
+        'Verify name matches application data',
+        'Validate DOB consistency',
+        'Ensure document is original image (not scan)'
+      ],
+      inputs: ['id-documents'],
+    },
+  },
+  {
+    id: 'loa-correctness-check',
+    type: 'processNode',
+    position: { x: 400, y: 650 },
+    data: {
+      name: 'LOA Correctness Check',
+      description: 'Letter of Authorization validation',
+      processType: 'main-process',
+      platform: ['n8n'],
+      checks: [
+        'Verify director name matches records',
+        'Validate director email format',
+        'Check LOA document completeness',
+        'Confirm proper signatures and dates'
+      ],
+      inputs: ['loa-document'],
+    },
+  },
+
+  // Nested Process Nodes (Reusable)
+  {
+    id: 'basic-doc-check',
+    type: 'processNode',
+    position: { x: 750, y: 400 },
+    data: {
+      name: 'Basic Doc Check',
+      description: 'Universal document validation checks',
+      processType: 'nested-process',
+      platform: ['Dash'],
+      checks: [
+        'Check if document is empty',
+        'Verify document is not cropped',
+        'Validate file format and size',
+        'Ensure document readability'
+      ],
+      inputs: ['pob-upload', 'id-documents', 'loa-document'],
+    },
+  },
+  {
+    id: 'basic-id-check',
+    type: 'processNode',
+    position: { x: 750, y: 550 },
+    data: {
+      name: 'Basic ID Check',
+      description: 'Standard ID document validation (nested process)',
+      processType: 'nested-process',
+      platform: ['Dash'],
+      checks: [
+        'Verify ID is not expired',
+        'Check document authenticity',
+        'Validate ID format and structure',
+        'Ensure clear image quality'
+      ],
+      inputs: ['id-documents'],
+    },
+  },
+
+  // Output Data Nodes
+  {
+    id: 'truebiz-results',
+    type: 'dataNode',
+    position: { x: 750, y: 200 },
+    data: {
+      name: 'TrueBiz Results',
+      description: 'Website analysis results from TrueBiz',
+      type: 'Intermediate',
+      dataType: 'JSON',
+      source: 'website-analysis',
+      schema: {
+        TruebizResults: {
+          industry_classification: 'string',
+          website_status: 'string',
+          business_activity_match: 'boolean',
+          ssl_valid: 'boolean',
+          recommendation: 'string'
+        }
+      }
+    },
+  },
+  {
+    id: 'recommended-industry',
     type: 'dataNode',
     position: { x: 750, y: 50 },
     data: {
-      name: 'UBO List',
-      description: 'Extracted Ultimate Beneficial Owners with personal details',
-      type: 'Intermediate',
-      dataType: 'List',
-      source: 'extract-ubos',
-      schema: {
-        ubos: [{
-          id: 'string',
-          full_name: 'string',
-          nationality_id: 'number',
-          date_of_birth: 'string',
-          ownership_percentage: 'number',
-          role: 'string',
-          addresses: 'array',
-          id_document_type: 'string',
-          id_document_number: 'string'
-        }]
-      }
-    },
-  },
-  {
-    id: 'onfido-verification',
-    type: 'processNode',
-    position: { x: 1100, y: 50 },
-    data: {
-      name: 'Onfido KYC Verification',
-      description: 'Perform identity verification checks on all UBOs using Onfido',
-      processType: 'main-process',
-      platform: ['n8n', 'Other'],
-      checks: [
-        'Document verification for each UBO',
-        'Biometric face matching',
-        'Address verification',
-        'Sanctions screening',
-        'Generate verification report'
-      ],
-      inputs: ['ubo-list'],
-    },
-  },
-  {
-    id: 'verification-results',
-    type: 'dataNode',
-    position: { x: 1450, y: 50 },
-    data: {
-      name: 'Verification Results',
-      description: 'Onfido verification outcomes for all UBOs',
+      name: 'Recommended Industry',
+      description: 'AI-recommended industry classifications',
       type: 'Output',
       dataType: 'JSON',
-      source: 'onfido-verification',
+      source: 'industry-selection',
       schema: {
-        verification_summary: {
-          total_ubos: 'number',
-          verified_count: 'number',
-          failed_count: 'number',
-          overall_status: 'string'
-        },
-        individual_results: [{
-          ubo_id: 'string',
-          document_check: 'string',
-          biometric_check: 'string', 
-          address_check: 'string',
-          sanctions_check: 'string',
-          overall_result: 'string'
-        }]
-      }
-    },
-  },
-  // Additional example nodes
-  {
-    id: 'business-data',
-    type: 'dataNode',
-    position: { x: 50, y: 300 },
-    data: {
-      name: 'Business Core Data',
-      description: 'Core business information extracted from KYB dataset',
-      type: 'Intermediate',
-      dataType: 'JSON',
-      source: 'extract-ubos', // Could be from a separate extraction process
-      schema: {
-        business_info: {
-          name: 'string',
-          registration_number: 'string',
-          incorporation_date: 'string',
-          country_id: 'number',
-          business_type: 'string',
-          industry_type: 'string'
-        },
-        risk_assessment: {
-          risk_level: 'number',
-          aml_score: 'number',
-          country_risk: 'string',
-          industry_risk: 'string'
+        RecommendedIndustry: {
+          primary_industry: 'string',
+          secondary_industries: ['string'],
+          confidence_score: 'number',
+          reasoning: 'string'
         }
       }
     },
   },
   {
-    id: 'compliance-screening',
-    type: 'processNode',
-    position: { x: 400, y: 300 },
+    id: 'vagueness-nudge',
+    type: 'dataNode',
+    position: { x: 750, y: 120 },
     data: {
-      name: 'Compliance Screening',
-      description: 'Screen business and UBOs against sanctions and watchlists',
-      processType: 'main-process',
-      platform: ['Dash'],
-      checks: [
-        'Sanctions list screening',
-        'PEP (Politically Exposed Person) check',
-        'Adverse media screening',
-        'Country risk assessment',
-        'Generate compliance report'
-      ],
-      inputs: ['business-data', 'ubo-list'],
+      name: 'Vagueness Nudge',
+      description: 'Nudge response for vague business descriptions',
+      type: 'Output',
+      dataType: 'JSON',
+      source: 'business-vagueness-check',
+      schema: {
+        nudge_required: 'boolean',
+        precision_score: 'number',
+        suggested_improvements: ['string']
+      }
     },
   },
   {
-    id: 'compliance-report',
+    id: 'pob-validation-result',
     type: 'dataNode',
-    position: { x: 750, y: 300 },
+    position: { x: 750, y: 350 },
     data: {
-      name: 'Compliance Report',
-      description: 'Comprehensive compliance screening results',
+      name: 'POB Validation Result',
+      description: 'Proof of business validation outcome',
       type: 'Output',
       dataType: 'JSON',
-      source: 'compliance-screening',
+      source: 'pob-check',
       schema: {
-        screening_results: {
-          sanctions_matches: 'number',
-          pep_matches: 'number',
-          adverse_media_hits: 'number',
-          overall_risk_score: 'number',
-          recommendation: 'string'
-        }
+        document_classification: 'string',
+        validation_passed: 'boolean',
+        issues_found: ['string'],
+        nudge_message: 'string'
+      }
+    },
+  },
+  {
+    id: 'id-validation-result',
+    type: 'dataNode',
+    position: { x: 750, y: 500 },
+    data: {
+      name: 'ID Validation Result',
+      description: 'Identity document validation outcome',
+      type: 'Output',
+      dataType: 'JSON',
+      source: 'id-check',
+      schema: {
+        validation_passed: 'boolean',
+        issues_found: ['string'],
+        document_quality_score: 'number'
+      }
+    },
+  },
+  {
+    id: 'loa-validation-result',
+    type: 'dataNode',
+    position: { x: 750, y: 650 },
+    data: {
+      name: 'LOA Validation Result',
+      description: 'Letter of Authorization validation outcome',
+      type: 'Output',
+      dataType: 'JSON',
+      source: 'loa-correctness-check',
+      schema: {
+        validation_passed: 'boolean',
+        director_verified: 'boolean',
+        issues_found: ['string']
       }
     },
   },
 ];
 
 const initialEdges = [
-  { id: 'e1-2', source: 'kyb-raw-data', target: 'extract-ubos' },
-  { id: 'e2-3', source: 'extract-ubos', target: 'ubo-list' },
-  { id: 'e3-4', source: 'ubo-list', target: 'onfido-verification' },
-  { id: 'e4-5', source: 'onfido-verification', target: 'verification-results' },
-  { id: 'e6-7', source: 'business-data', target: 'compliance-screening' },
-  { id: 'e7-8', source: 'ubo-list', target: 'compliance-screening' },
-  { id: 'e8-9', source: 'compliance-screening', target: 'compliance-report' },
+  // Main process flows
+  { id: 'e1', source: 'website-input', target: 'website-analysis' },
+  { id: 'e2', source: 'website-analysis', target: 'truebiz-results' },
+  { id: 'e3', source: 'business-description-input', target: 'industry-selection' },
+  { id: 'e4', source: 'truebiz-results', target: 'industry-selection' },
+  { id: 'e5', source: 'industry-selection', target: 'recommended-industry' },
+  { id: 'e6', source: 'business-description-input', target: 'business-vagueness-check' },
+  { id: 'e7', source: 'business-vagueness-check', target: 'vagueness-nudge' },
+  { id: 'e8', source: 'pob-upload', target: 'pob-check' },
+  { id: 'e9', source: 'business-description-input', target: 'pob-check' },
+  { id: 'e10', source: 'truebiz-results', target: 'pob-check' },
+  { id: 'e11', source: 'pob-check', target: 'pob-validation-result' },
+  { id: 'e12', source: 'id-documents', target: 'id-check' },
+  { id: 'e13', source: 'id-check', target: 'id-validation-result' },
+  { id: 'e14', source: 'loa-document', target: 'loa-correctness-check' },
+  { id: 'e15', source: 'loa-correctness-check', target: 'loa-validation-result' },
+  
+  // Nested process connections
+  { id: 'e16', source: 'pob-upload', target: 'basic-doc-check' },
+  { id: 'e17', source: 'id-documents', target: 'basic-doc-check' },
+  { id: 'e18', source: 'loa-document', target: 'basic-doc-check' },
+  { id: 'e19', source: 'id-documents', target: 'basic-id-check' },
 ];
 
 function Flow() {
