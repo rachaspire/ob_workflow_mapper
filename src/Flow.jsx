@@ -11,7 +11,7 @@ import 'reactflow/dist/style.css';
 
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Plus, Settings2 } from 'lucide-react';
+import { Plus, Settings2, LayoutGrid } from 'lucide-react';
 
 import DataNode from './components/nodes/DataNode';
 import ProcessNode from './components/nodes/ProcessNode';
@@ -459,6 +459,129 @@ function Flow() {
     return `${type}-${timestamp}`;
   };
 
+  // Auto-layout function to arrange nodes in layers
+  const formatNodes = useCallback(() => {
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+    const layers = [];
+    
+    // Layer 0: Raw input nodes (no source)
+    const rawNodes = nodes.filter(node => 
+      node.type === 'dataNode' && node.data.type === 'Raw'
+    );
+    
+    // Layer 1: Nested processes (reusable components)
+    const nestedProcesses = nodes.filter(node => 
+      node.type === 'processNode' && node.data.processType === 'nested-process'
+    );
+    
+    // Build dependency graph for remaining nodes
+    const visited = new Set();
+    const layerMap = new Map();
+    
+    // Mark raw nodes as layer 0
+    rawNodes.forEach(node => {
+      layerMap.set(node.id, 0);
+      visited.add(node.id);
+    });
+    
+    // Mark nested processes as layer 1
+    nestedProcesses.forEach(node => {
+      layerMap.set(node.id, 1);
+      visited.add(node.id);
+    });
+    
+    // Function to calculate layer based on dependencies
+    const calculateLayer = (nodeId, currentPath = new Set()) => {
+      if (layerMap.has(nodeId)) {
+        return layerMap.get(nodeId);
+      }
+      
+      if (currentPath.has(nodeId)) {
+        // Circular dependency, assign a default layer
+        return 2;
+      }
+      
+      const node = nodeMap.get(nodeId);
+      if (!node) return 0;
+      
+      currentPath.add(nodeId);
+      
+      let maxInputLayer = -1;
+      
+      // Check inputs from node data
+      if (node.data.inputs && node.data.inputs.length > 0) {
+        node.data.inputs.forEach(inputId => {
+          const inputLayer = calculateLayer(inputId, currentPath);
+          maxInputLayer = Math.max(maxInputLayer, inputLayer);
+        });
+      }
+      
+      // Check source
+      if (node.data.source) {
+        const sourceLayer = calculateLayer(node.data.source, currentPath);
+        maxInputLayer = Math.max(maxInputLayer, sourceLayer);
+      }
+      
+      // Check edges for additional dependencies
+      edges.forEach(edge => {
+        if (edge.target === nodeId) {
+          const sourceLayer = calculateLayer(edge.source, currentPath);
+          maxInputLayer = Math.max(maxInputLayer, sourceLayer);
+        }
+      });
+      
+      currentPath.delete(nodeId);
+      
+      const nodeLayer = maxInputLayer + 1;
+      layerMap.set(nodeId, nodeLayer);
+      return nodeLayer;
+    };
+    
+    // Calculate layers for all nodes
+    nodes.forEach(node => {
+      if (!layerMap.has(node.id)) {
+        calculateLayer(node.id);
+      }
+    });
+    
+    // Group nodes by layer
+    const layeredNodes = new Map();
+    layerMap.forEach((layer, nodeId) => {
+      if (!layeredNodes.has(layer)) {
+        layeredNodes.set(layer, []);
+      }
+      layeredNodes.get(layer).push(nodeMap.get(nodeId));
+    });
+    
+    // Position nodes in layers
+    const layerWidth = 350;
+    const nodeHeight = 120;
+    const nodeSpacing = 20;
+    
+    const newNodes = [];
+    
+    layeredNodes.forEach((layerNodes, layerIndex) => {
+      const x = 50 + (layerIndex * layerWidth);
+      
+      // Sort nodes within layer by type (data nodes first, then processes)
+      layerNodes.sort((a, b) => {
+        if (a.type === 'dataNode' && b.type === 'processNode') return -1;
+        if (a.type === 'processNode' && b.type === 'dataNode') return 1;
+        return a.data.name.localeCompare(b.data.name);
+      });
+      
+      layerNodes.forEach((node, index) => {
+        const y = 50 + (index * (nodeHeight + nodeSpacing));
+        newNodes.push({
+          ...node,
+          position: { x, y }
+        });
+      });
+    });
+    
+    setNodes(newNodes);
+  }, [nodes, edges, setNodes]);
+
   // Create new node
   const createNode = (nodeData) => {
     const id = generateId(nodeData.nodeType);
@@ -499,30 +622,39 @@ function Flow() {
     <div className="w-screen h-screen flex flex-col">
       {/* Top Bar */}
       <div className="flex-shrink-0 border-b bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-        <div className="px-4 py-3 flex items-center gap-2">
-          <div className="text-lg font-semibold">KYB/KYC Flow Builder</div>
-          <div className="flex-1" />
-          
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={() => {
-              setCreateNodeType('data');
-              setShowCreateForm(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-1"/>Data Node
-          </Button>
-          <Button 
-            size="sm"
-            onClick={() => {
-              setCreateNodeType('process');
-              setShowCreateForm(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-1"/>Process Node
-          </Button>
-        </div>
+          <div className="px-4 py-3 flex items-center gap-2">
+            <div className="text-lg font-semibold">KYB/KYC Flow Builder</div>
+            <div className="flex-1" />
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={formatNodes}
+              className="mr-2"
+            >
+              <LayoutGrid className="w-4 h-4 mr-1"/>Format
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setCreateNodeType('data');
+                setShowCreateForm(true);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-1"/>Data Node
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreateNodeType('process');
+                setShowCreateForm(true);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-1"/>Process Node
+            </Button>
+          </div>
       </div>
 
       {/* Canvas + Inspector */}
