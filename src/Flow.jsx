@@ -25,50 +25,203 @@ const nodeTypes = {
   processNode: ProcessNode,
 };
 
-// Initial sample nodes
+// Initial sample nodes based on KYB schema
 const initialNodes = [
   {
-    id: 'data-1',
+    id: 'kyb-raw-data',
     type: 'dataNode',
     position: { x: 50, y: 50 },
     data: {
-      name: 'Business Registration',
-      description: 'Raw business registration data from government registry',
+      name: 'KYB Raw Data',
+      description: 'Complete KYB dataset with business, directors, shareholders, etc.',
       type: 'Raw',
       dataType: 'JSON',
       source: null,
+      schema: {
+        business: {
+          business: { id: 'number', name: 'string', registration_number: 'string', country_id: 'number' },
+          properties: [{ name: 'string', key: 'string', value: 'string' }],
+          addresses: { id: 'number', address: 'string', country_id: 'number' },
+          officers: { id: 'number', name: 'string', nationality: 'string', apps: 'array' },
+          shareholders: { id: 'number', name: 'string', ownership_percentage: 'number' }
+        },
+        directors: [{ id: 'number', full_name: 'string', nationality_id: 'number', addresses: 'array', kyc_check: 'object' }],
+        jotform_submissions: [{ id: 'number', data: 'object' }],
+        truebiz: { data: 'object', recommendation: 'object' },
+        kyb: { id: 'number', state_code: 'string', risk_level: 'number' },
+        lexisnexis: [{ id: 'number', decision_code: 'string', rule_outcomes: 'array' }]
+      }
     },
   },
   {
-    id: 'process-1',
+    id: 'extract-ubos',
     type: 'processNode',
     position: { x: 400, y: 50 },
     data: {
-      name: 'Verify Business Details',
-      description: 'Validate business registration information',
+      name: 'Extract UBOs',
+      description: 'Identify Ultimate Beneficial Owners from directors and shareholders data',
       processType: 'main-process',
       platform: ['Dash'],
-      checks: ['Check registration number validity', 'Verify business address', 'Confirm business status'],
-      inputs: ['data-1'],
+      checks: [
+        'Extract directors with >25% ownership',
+        'Extract shareholders with >25% ownership', 
+        'Merge and deduplicate UBO list',
+        'Validate UBO completeness'
+      ],
+      inputs: ['kyb-raw-data'],
     },
   },
   {
-    id: 'data-2',
+    id: 'ubo-list',
     type: 'dataNode',
     position: { x: 750, y: 50 },
     data: {
-      name: 'Verification Result',
-      description: 'Business verification outcome',
+      name: 'UBO List',
+      description: 'Extracted Ultimate Beneficial Owners with personal details',
+      type: 'Intermediate',
+      dataType: 'List',
+      source: 'extract-ubos',
+      schema: {
+        ubos: [{
+          id: 'string',
+          full_name: 'string',
+          nationality_id: 'number',
+          date_of_birth: 'string',
+          ownership_percentage: 'number',
+          role: 'string',
+          addresses: 'array',
+          id_document_type: 'string',
+          id_document_number: 'string'
+        }]
+      }
+    },
+  },
+  {
+    id: 'onfido-verification',
+    type: 'processNode',
+    position: { x: 1100, y: 50 },
+    data: {
+      name: 'Onfido KYC Verification',
+      description: 'Perform identity verification checks on all UBOs using Onfido',
+      processType: 'main-process',
+      platform: ['n8n', 'Other'],
+      checks: [
+        'Document verification for each UBO',
+        'Biometric face matching',
+        'Address verification',
+        'Sanctions screening',
+        'Generate verification report'
+      ],
+      inputs: ['ubo-list'],
+    },
+  },
+  {
+    id: 'verification-results',
+    type: 'dataNode',
+    position: { x: 1450, y: 50 },
+    data: {
+      name: 'Verification Results',
+      description: 'Onfido verification outcomes for all UBOs',
       type: 'Output',
       dataType: 'JSON',
-      source: 'process-1',
+      source: 'onfido-verification',
+      schema: {
+        verification_summary: {
+          total_ubos: 'number',
+          verified_count: 'number',
+          failed_count: 'number',
+          overall_status: 'string'
+        },
+        individual_results: [{
+          ubo_id: 'string',
+          document_check: 'string',
+          biometric_check: 'string', 
+          address_check: 'string',
+          sanctions_check: 'string',
+          overall_result: 'string'
+        }]
+      }
+    },
+  },
+  // Additional example nodes
+  {
+    id: 'business-data',
+    type: 'dataNode',
+    position: { x: 50, y: 300 },
+    data: {
+      name: 'Business Core Data',
+      description: 'Core business information extracted from KYB dataset',
+      type: 'Intermediate',
+      dataType: 'JSON',
+      source: 'extract-ubos', // Could be from a separate extraction process
+      schema: {
+        business_info: {
+          name: 'string',
+          registration_number: 'string',
+          incorporation_date: 'string',
+          country_id: 'number',
+          business_type: 'string',
+          industry_type: 'string'
+        },
+        risk_assessment: {
+          risk_level: 'number',
+          aml_score: 'number',
+          country_risk: 'string',
+          industry_risk: 'string'
+        }
+      }
+    },
+  },
+  {
+    id: 'compliance-screening',
+    type: 'processNode',
+    position: { x: 400, y: 300 },
+    data: {
+      name: 'Compliance Screening',
+      description: 'Screen business and UBOs against sanctions and watchlists',
+      processType: 'main-process',
+      platform: ['Dash'],
+      checks: [
+        'Sanctions list screening',
+        'PEP (Politically Exposed Person) check',
+        'Adverse media screening',
+        'Country risk assessment',
+        'Generate compliance report'
+      ],
+      inputs: ['business-data', 'ubo-list'],
+    },
+  },
+  {
+    id: 'compliance-report',
+    type: 'dataNode',
+    position: { x: 750, y: 300 },
+    data: {
+      name: 'Compliance Report',
+      description: 'Comprehensive compliance screening results',
+      type: 'Output',
+      dataType: 'JSON',
+      source: 'compliance-screening',
+      schema: {
+        screening_results: {
+          sanctions_matches: 'number',
+          pep_matches: 'number',
+          adverse_media_hits: 'number',
+          overall_risk_score: 'number',
+          recommendation: 'string'
+        }
+      }
     },
   },
 ];
 
 const initialEdges = [
-  { id: 'e1-2', source: 'data-1', target: 'process-1' },
-  { id: 'e2-3', source: 'process-1', target: 'data-2' },
+  { id: 'e1-2', source: 'kyb-raw-data', target: 'extract-ubos' },
+  { id: 'e2-3', source: 'extract-ubos', target: 'ubo-list' },
+  { id: 'e3-4', source: 'ubo-list', target: 'onfido-verification' },
+  { id: 'e4-5', source: 'onfido-verification', target: 'verification-results' },
+  { id: 'e6-7', source: 'business-data', target: 'compliance-screening' },
+  { id: 'e7-8', source: 'ubo-list', target: 'compliance-screening' },
+  { id: 'e8-9', source: 'compliance-screening', target: 'compliance-report' },
 ];
 
 function Flow() {

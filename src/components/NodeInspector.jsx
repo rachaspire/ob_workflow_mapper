@@ -4,6 +4,121 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 
+// Schema Selector Component for nested object selection
+const SchemaSelector = ({ schema, nodeId, selectedFields, onFieldToggle }) => {
+  const renderSchemaItem = (item, path = '', level = 0) => {
+    if (typeof item === 'string') {
+      // Leaf node (primitive type)
+      return (
+        <div key={path} className={`flex items-center gap-1 text-xs ${level > 0 ? 'ml-4' : ''}`}>
+          <input
+            type="checkbox"
+            checked={selectedFields[path] || false}
+            onChange={(e) => onFieldToggle(path, e.target.checked)}
+            className="w-3 h-3"
+          />
+          <span className="text-gray-600">{path.split('.').pop()}</span>
+          <span className="text-gray-400">({item})</span>
+        </div>
+      );
+    }
+
+    if (Array.isArray(item)) {
+      // Array type
+      const arrayPath = path;
+      const isSelected = selectedFields[arrayPath];
+      const hasSelectedChildren = Object.keys(selectedFields).some(key => 
+        key.startsWith(arrayPath + '.') && selectedFields[key]
+      );
+
+      return (
+        <div key={path} className={level > 0 ? 'ml-4' : ''}>
+          <div className="flex items-center gap-1 text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={isSelected || false}
+              onChange={(e) => {
+                onFieldToggle(arrayPath, e.target.checked);
+                // If selecting parent, clear child selections
+                if (e.target.checked) {
+                  Object.keys(selectedFields).forEach(key => {
+                    if (key.startsWith(arrayPath + '.')) {
+                      onFieldToggle(key, false);
+                    }
+                  });
+                }
+              }}
+              className="w-3 h-3"
+            />
+            <span className="text-blue-600">{arrayPath.split('.').pop() || 'root'}</span>
+            <span className="text-gray-400">[array]</span>
+          </div>
+          
+          {/* Show array item structure if not fully selected */}
+          {!isSelected && item.length > 0 && (
+            <div className="ml-4 mt-1 border-l border-gray-200 pl-2">
+              {renderSchemaItem(item[0], `${arrayPath}[0]`, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (typeof item === 'object' && item !== null) {
+      // Object type
+      const objectPath = path;
+      const isSelected = selectedFields[objectPath];
+      const hasSelectedChildren = Object.keys(selectedFields).some(key => 
+        key.startsWith(objectPath + '.') && selectedFields[key]
+      );
+
+      return (
+        <div key={path} className={level > 0 ? 'ml-4' : ''}>
+          <div className="flex items-center gap-1 text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={isSelected || false}
+              onChange={(e) => {
+                onFieldToggle(objectPath, e.target.checked);
+                // If selecting parent, clear child selections
+                if (e.target.checked) {
+                  Object.keys(selectedFields).forEach(key => {
+                    if (key.startsWith(objectPath + '.')) {
+                      onFieldToggle(key, false);
+                    }
+                  });
+                }
+              }}
+              className="w-3 h-3"
+            />
+            <span className="text-green-600">{objectPath.split('.').pop() || 'root'}</span>
+            <span className="text-gray-400">{'{object}'}</span>
+          </div>
+          
+          {/* Show object properties if not fully selected */}
+          {!isSelected && (
+            <div className="ml-4 mt-1 border-l border-gray-200 pl-2">
+              {Object.entries(item).map(([key, value]) => 
+                renderSchemaItem(value, objectPath ? `${objectPath}.${key}` : key, level + 1)
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="space-y-1 max-h-32 overflow-y-auto">
+      {Object.entries(schema).map(([key, value]) => 
+        renderSchemaItem(value, key, 0)
+      )}
+    </div>
+  );
+};
+
 const NodeInspector = ({ node, onUpdate, nodes, onConnect }) => {
   const [editData, setEditData] = useState(node.data);
 
@@ -211,30 +326,55 @@ const NodeInspector = ({ node, onUpdate, nodes, onConnect }) => {
             </div>
           </div>
 
-          <div>
-            <Label>Inputs (Data Nodes Only)</Label>
-            <div className="max-h-40 overflow-y-auto border border-input rounded p-2 space-y-2">
-              {dataNodes.length === 0 ? (
-                <div className="text-muted-foreground text-sm">No data nodes available</div>
-              ) : (
-                dataNodes.map(n => (
-                  <label key={n.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editData.inputs?.includes(n.id) || false}
-                      onChange={() => handleInputToggle(n.id)}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">{n.data.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {n.data.type} • {n.data.dataType}
+              <div>
+                <Label>Inputs (Data Nodes Only)</Label>
+                <div className="max-h-60 overflow-y-auto border border-input rounded p-2 space-y-2">
+                  {dataNodes.length === 0 ? (
+                    <div className="text-muted-foreground text-sm">No data nodes available</div>
+                  ) : (
+                    dataNodes.map(n => (
+                      <div key={n.id} className="border border-gray-200 rounded p-2">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer mb-2">
+                          <input
+                            type="checkbox"
+                            checked={editData.inputs?.includes(n.id) || false}
+                            onChange={() => handleInputToggle(n.id)}
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium">{n.data.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {n.data.type} • {n.data.dataType}
+                            </div>
+                          </div>
+                        </label>
+                        
+                        {/* Schema Selection - only show if node is selected and has schema */}
+                        {(editData.inputs?.includes(n.id) && n.data.schema) && (
+                          <div className="ml-6 mt-2 border-l-2 border-blue-200 pl-3">
+                            <div className="text-xs font-medium text-blue-600 mb-1">Select Data Fields:</div>
+                            <SchemaSelector 
+                              schema={n.data.schema} 
+                              nodeId={n.id}
+                              selectedFields={editData.selectedFields?.[n.id] || {}}
+                              onFieldToggle={(path, selected) => {
+                                const newSelectedFields = { 
+                                  ...editData.selectedFields,
+                                  [n.id]: { 
+                                    ...editData.selectedFields?.[n.id],
+                                    [path]: selected 
+                                  }
+                                };
+                                setEditData(prev => ({ ...prev, selectedFields: newSelectedFields }));
+                                onUpdate({ ...editData, selectedFields: newSelectedFields });
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
+                    ))
+                  )}
+                </div>
+              </div>
         </>
       )}
 
