@@ -15,8 +15,17 @@ const ProcessNode = ({ id, data }) => {
 
   return (
     <div className={`rounded-2xl border ${style.border} ${style.bg} shadow-sm px-3 py-2 w-[260px] relative`}>
-      <Handle id={`${id}-t`} type="target" position={Position.Top} style={{ width: 10, height: 10 }} />
-      <Handle id={`${id}-l`} type="target" position={Position.Left} style={{ width: 10, height: 10 }} />
+      {/* Target handle (incoming connections from left) */}
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        style={{ 
+          width: 12, 
+          height: 12, 
+          background: '#6b7280',
+          border: '2px solid white'
+        }} 
+      />
 
       <div className="flex items-center gap-2 mb-2">
         <div className="p-1 rounded-md bg-white/80 border shadow-sm">
@@ -58,8 +67,17 @@ const ProcessNode = ({ id, data }) => {
         )}
       </div>
 
-      <Handle id={`${id}-b`} type="source" position={Position.Bottom} style={{ width: 10, height: 10 }} />
-      <Handle id={`${id}-r`} type="source" position={Position.Right} style={{ width: 10, height: 10 }} />
+      {/* Source handle (outgoing connections to right) */}
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        style={{ 
+          width: 12, 
+          height: 12, 
+          background: '#6b7280',
+          border: '2px solid white'
+        }} 
+      />
     </div>
   );
 };

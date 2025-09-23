@@ -73,7 +73,7 @@ const initialEdges = [
 
 function Flow() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [edges, setEdges, onEdgesChangeDefault] = useEdgesState(initialEdges);
   const [selectedNode, setSelectedNode] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createNodeType, setCreateNodeType] = useState('data');
@@ -82,6 +82,37 @@ function Flow() {
     (params) => setEdges((eds) => addEdge(params, eds)),
     [setEdges],
   );
+
+  // Handle edge deletion and sync node data
+  const onEdgesChange = useCallback((changes) => {
+    // First, handle any removals to sync node data
+    changes.forEach((change) => {
+      if (change.type === 'remove') {
+        const edge = edges.find(e => e.id === change.id);
+        if (edge) {
+          // Update the target node to remove the source from its inputs
+          setNodes((nds) => nds.map((node) => {
+            if (node.id === edge.target) {
+              if (node.type === 'processNode') {
+                // Remove from inputs array
+                const newInputs = (node.data.inputs || []).filter(id => id !== edge.source);
+                return { ...node, data: { ...node.data, inputs: newInputs } };
+              } else if (node.type === 'dataNode') {
+                // Clear source if it matches
+                if (node.data.source === edge.source) {
+                  return { ...node, data: { ...node.data, source: null } };
+                }
+              }
+            }
+            return node;
+          }));
+        }
+      }
+    });
+    
+    // Then apply the default edge changes
+    onEdgesChangeDefault(changes);
+  }, [edges, setNodes, onEdgesChangeDefault]);
 
   const onNodeClick = useCallback((event, node) => {
     setSelectedNode(node);
