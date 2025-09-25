@@ -1259,7 +1259,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
 
         {/* Resizable Node Inspector Panel */}
         <div 
-          className="flex-shrink-0 bg-white absolute right-0 top-0 bottom-0 flex"
+          className="flex-shrink-0 bg-gray-50 absolute right-0 top-0 bottom-0 flex"
           style={{ width: inspectorWidth }}
         >
           {/* Resize Handle */}
@@ -1283,7 +1283,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
                   <Settings2 className="w-4 h-4" /> Node Inspector
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 pb-2">
+              <CardContent className="p-4">
                 {!selectedNode ? (
                   <div className="text-sm text-muted-foreground">
                     Select a node to edit properties, run processes, or manage data.
