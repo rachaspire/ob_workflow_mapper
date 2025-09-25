@@ -90,7 +90,32 @@ function WorkflowManager({ onSelectWorkflow, onCreateNew, currentWorkflowId }) {
   // Import workflow
   const handleImportWorkflow = async () => {
     try {
-      const exportData = JSON.parse(importData);
+      const exportData = JSON.parse(importData.trim());
+      
+      // Validate export data format
+      if (!exportData.flow && !exportData.edges && !exportData.connections && !exportData.metadata) {
+        throw new Error('Invalid export format: missing required data');
+      }
+      
+      // Count edges from all possible locations for user feedback
+      let detectedEdgeCount = 0;
+      if (exportData.edges && Array.isArray(exportData.edges)) {
+        detectedEdgeCount += exportData.edges.length;
+      }
+      if (exportData.connections && Array.isArray(exportData.connections)) {
+        detectedEdgeCount += exportData.connections.length;
+      }
+      if (exportData.flow?.edges && Array.isArray(exportData.flow.edges)) {
+        detectedEdgeCount += exportData.flow.edges.length;
+      }
+      if (exportData.flow?.connections && Array.isArray(exportData.flow.connections)) {
+        detectedEdgeCount += exportData.flow.connections.length;
+      }
+      
+      if (detectedEdgeCount === 0) {
+        console.warn('No connections detected in import data - workflow will have no flow connections');
+      }
+      
       const imported = await workflowAPI.import({
         name: exportData.metadata?.flowName || 'Imported Workflow',
         description: 'Imported from JSON export',

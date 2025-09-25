@@ -288,8 +288,8 @@ router.post('/import', async (req, res) => {
   try {
     const { name = 'Imported Workflow', description, tags = [], exportData } = req.body;
     
-    if (!exportData || !exportData.flow) {
-      return res.status(400).json({ error: 'Invalid export data format' });
+    if (!exportData || (!exportData.flow && !exportData.edges && !exportData.connections && !exportData.metadata)) {
+      return res.status(400).json({ error: 'Invalid export data format - missing required data' });
     }
     
     // Convert export format to our canvas format
@@ -409,10 +409,10 @@ router.post('/import', async (req, res) => {
     
     // Normalize edge format and validate required fields
     canvas.edges = edges.filter(edge => edge.source && edge.target).map(edge => ({
+      ...edge,
       id: edge.id || `e-${edge.source}-${edge.target}`,
       source: edge.source,
-      target: edge.target,
-      ...edge
+      target: edge.target
     }));
     
     // Update metadata with current stats
