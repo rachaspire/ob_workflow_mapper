@@ -1222,7 +1222,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
       </div>
 
       {/* Canvas + Inspector */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
         <div className="flex-1 border-r" style={{ marginRight: inspectorWidth }}>
           <ReactFlow
             nodes={nodes.map(node => ({
@@ -1259,7 +1259,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
 
         {/* Resizable Node Inspector Panel */}
         <div 
-          className="flex-shrink-0 bg-gray-50 fixed right-0 top-0 bottom-0 flex"
+          className="flex-shrink-0 bg-gray-50 absolute right-0 top-0 bottom-0 flex"
           style={{ width: inspectorWidth }}
         >
           {/* Resize Handle */}
