@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -11,7 +11,8 @@ import 'reactflow/dist/style.css';
 
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Plus, Settings2, LayoutGrid, Download } from 'lucide-react';
+import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { workflowAPI, AutoSaver } from './lib/api';
 
 import DataNode from './components/nodes/DataNode';
 import ProcessNode from './components/nodes/ProcessNode';
@@ -406,13 +407,102 @@ const initialEdges = [
   { id: 'e19', source: 'id-documents', target: 'basic-id-check' },
 ];
 
-function Flow() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChangeDefault] = useEdgesState(initialEdges);
+function Flow({ workflow, workflowId, onBackToManager }) {
+  // Initialize nodes and edges from workflow or use defaults
+  const getInitialData = () => {
+    if (workflow?.canvas) {
+      return {
+        nodes: workflow.canvas.nodes || [],
+        edges: workflow.canvas.edges || []
+      };
+    }
+    return { nodes: initialNodes, edges: initialEdges };
+  };
+
+  const initialData = getInitialData();
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialData.nodes);
+  const [edges, setEdges, onEdgesChangeDefault] = useEdgesState(initialData.edges);
   const [selectedNode, setSelectedNode] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createNodeType, setCreateNodeType] = useState('data');
   const [highlightedNodes, setHighlightedNodes] = useState(new Set());
+  const [saveStatus, setSaveStatus] = useState('saved'); // 'saved', 'saving', 'error'
+  const [lastSaved, setLastSaved] = useState(null);
+  const autoSaverRef = useRef(null);
+  const currentVersionRef = useRef(workflow?.version || 1);
+
+  // Auto-save setup and cleanup
+  useEffect(() => {
+    if (workflowId) {
+      autoSaverRef.current = new AutoSaver(workflowId, (error, updatedWorkflow) => {
+        if (error) {
+          setSaveStatus('error');
+          console.error('Auto-save error:', error);
+        } else {
+          if (updatedWorkflow?.version) {
+            currentVersionRef.current = updatedWorkflow.version; // Update version after successful autosave
+          }
+          setSaveStatus('saved');
+          setLastSaved(new Date());
+        }
+      });
+      autoSaverRef.current.start();
+    }
+
+    return () => {
+      if (autoSaverRef.current) {
+        autoSaverRef.current.stop();
+      }
+    };
+  }, [workflowId]);
+
+  // Auto-save when nodes or edges change
+  useEffect(() => {
+    if (workflowId && autoSaverRef.current) {
+      setSaveStatus('saving');
+      const canvas = {
+        nodes,
+        edges,
+        metadata: {
+          flowName: workflow?.name || 'Untitled Workflow',
+          version: "1.0",
+          totalNodes: nodes.length,
+          totalEdges: edges.length,
+          lastModified: new Date().toISOString()
+        }
+      };
+      
+      autoSaverRef.current.schedule(canvas, currentVersionRef.current);
+    }
+  }, [nodes, edges, workflowId, workflow?.name]);
+
+  // Manual save function
+  const handleManualSave = async () => {
+    if (!workflowId) return;
+    
+    try {
+      setSaveStatus('saving');
+      const canvas = {
+        nodes,
+        edges,
+        metadata: {
+          flowName: workflow?.name || 'Untitled Workflow',
+          version: "1.0",
+          totalNodes: nodes.length,
+          totalEdges: edges.length,
+          lastModified: new Date().toISOString()
+        }
+      };
+      
+      const updatedWorkflow = await workflowAPI.update(workflowId, { canvas, version: currentVersionRef.current });
+      currentVersionRef.current = updatedWorkflow.version; // Update version after successful save
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+    } catch (error) {
+      setSaveStatus('error');
+      console.error('Manual save error:', error);
+    }
+  };
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
@@ -826,8 +916,63 @@ function Flow() {
       {/* Top Bar */}
       <div className="flex-shrink-0 border-b bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
           <div className="px-4 py-3 flex items-center gap-2">
-            <div className="text-lg font-semibold">KYB/KYC Flow Builder</div>
+            {/* Back Button */}
+            {onBackToManager && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onBackToManager}
+                className="mr-2"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1"/>Back
+              </Button>
+            )}
+            
+            {/* Title and Save Status */}
+            <div className="flex items-center gap-3">
+              <div className="text-lg font-semibold">
+                {workflow?.name || 'KYB/KYC Flow Builder'}
+              </div>
+              
+              {workflowId && (
+                <div className="flex items-center gap-2 text-sm">
+                  {saveStatus === 'saving' && (
+                    <div className="flex items-center text-blue-600">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b border-current mr-1"></div>
+                      Saving...
+                    </div>
+                  )}
+                  {saveStatus === 'saved' && (
+                    <div className="flex items-center text-green-600">
+                      <Save className="h-3 w-3 mr-1" />
+                      {lastSaved ? `Saved at ${lastSaved.toLocaleTimeString()}` : 'Saved'}
+                    </div>
+                  )}
+                  {saveStatus === 'error' && (
+                    <div className="flex items-center text-red-600">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Save failed
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
             <div className="flex-1" />
+            
+            {/* Manual Save Button */}
+            {workflowId && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleManualSave}
+                disabled={saveStatus === 'saving'}
+                className="mr-2"
+              >
+                <Save className="w-4 h-4 mr-1"/>
+                {saveStatus === 'saving' ? 'Saving...' : 'Save'}
+              </Button>
+            )}
 
             <Button
               size="sm"
