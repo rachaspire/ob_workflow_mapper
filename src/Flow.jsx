@@ -10,8 +10,9 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle, Edit2, Check, X } from 'lucide-react';
 import { workflowAPI, AutoSaver } from './lib/api';
 
 import DataNode from './components/nodes/DataNode';
@@ -435,8 +436,17 @@ function Flow({ workflow, workflowId, onBackToManager }) {
   const [highlightedNodes, setHighlightedNodes] = useState(new Set());
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved', 'saving', 'error'
   const [lastSaved, setLastSaved] = useState(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
   const autoSaverRef = useRef(null);
   const currentVersionRef = useRef(workflow?.version || 1);
+
+  // Sync tempName with current workflow name
+  useEffect(() => {
+    if (currentWorkflow?.name && !isEditingName) {
+      setTempName(currentWorkflow.name);
+    }
+  }, [currentWorkflow?.name, isEditingName]);
 
   // Auto-save setup and cleanup
   useEffect(() => {
@@ -508,6 +518,33 @@ function Flow({ workflow, workflowId, onBackToManager }) {
     } catch (error) {
       setSaveStatus('error');
       console.error('Manual save error:', error);
+    }
+  };
+
+  const handleNameSave = async () => {
+    if (!workflowId || !tempName.trim() || tempName === currentWorkflow?.name) {
+      setIsEditingName(false);
+      setTempName(currentWorkflow?.name || '');
+      return;
+    }
+
+    try {
+      setSaveStatus('saving');
+      const updatedWorkflow = await workflowAPI.update(workflowId, {
+        name: tempName.trim(),
+        version: currentVersionRef.current
+      });
+      
+      // Update the current workflow with the new name
+      setCurrentWorkflow(prev => ({ ...prev, name: tempName.trim() }));
+      currentVersionRef.current = updatedWorkflow.version;
+      setIsEditingName(false);
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+    } catch (error) {
+      setSaveStatus('error');
+      console.error('Failed to update workflow name:', error);
+      setTempName(currentWorkflow?.name || '');
     }
   };
 
@@ -937,9 +974,77 @@ function Flow({ workflow, workflowId, onBackToManager }) {
             
             {/* Title and Save Status */}
             <div className="flex items-center gap-3">
-              <div className="text-lg font-semibold">
-                {currentWorkflow?.name || 'KYB/KYC Flow Builder'}
-              </div>
+              {isEditingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleNameSave();
+                      if (e.key === 'Escape') {
+                        setIsEditingName(false);
+                        setTempName(currentWorkflow?.name || '');
+                      }
+                    }}
+                    className="text-lg font-semibold h-8 border-blue-300 focus:border-blue-500"
+                    autoFocus
+                    disabled={saveStatus === 'saving'}
+                    onBlur={() => {
+                      // Only save on blur if we're still editing (not cancelled by Escape)
+                      if (isEditingName) {
+                        handleNameSave();
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleNameSave}
+                    disabled={!tempName.trim() || saveStatus === 'saving'}
+                    className="h-7 w-7 p-0"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditingName(false);
+                      setTempName(currentWorkflow?.name || '');
+                    }}
+                    className="h-7 w-7 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="text-lg font-semibold cursor-pointer hover:text-blue-600 transition-colors"
+                    onClick={() => {
+                      if (workflowId) {
+                        setIsEditingName(true);
+                        setTempName(currentWorkflow?.name || '');
+                      }
+                    }}
+                    title="Click to edit workflow name"
+                  >
+                    {currentWorkflow?.name || 'KYB/KYC Flow Builder'}
+                  </div>
+                  {workflowId && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsEditingName(true);
+                        setTempName(currentWorkflow?.name || '');
+                      }}
+                      className="h-6 w-6 p-0 opacity-50 hover:opacity-100"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              )}
               
               {workflowId && (
                 <div className="flex items-center gap-2 text-sm">
