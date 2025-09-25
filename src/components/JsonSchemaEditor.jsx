@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -7,10 +7,20 @@ import { Plus, Trash2, ChevronDown, ChevronRight, FileJson } from 'lucide-react'
 const JsonSchemaEditor = ({ schema = {}, onChange }) => {
   const [expandedPaths, setExpandedPaths] = useState(new Set(['root']));
   const [editingSchema, setEditingSchema] = useState(schema);
+  const debounceTimeoutRef = useRef(null);
 
   useEffect(() => {
     setEditingSchema(schema);
   }, [schema]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const togglePath = (path) => {
     const newExpanded = new Set(expandedPaths);
@@ -22,9 +32,58 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     setExpandedPaths(newExpanded);
   };
 
+  // Debounced update function to prevent saving on every keystroke
+  const debouncedOnChange = useCallback((newSchema) => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    debounceTimeoutRef.current = setTimeout(() => {
+      onChange(newSchema);
+    }, 500); // 500ms delay
+  }, [onChange]);
+
   const updateSchema = (newSchema) => {
     setEditingSchema(newSchema);
+    debouncedOnChange(newSchema);
+  };
+
+  // Immediate update for non-text changes (dropdowns, buttons)
+  const updateSchemaImmediate = (newSchema) => {
+    // Clear any pending debounced updates to prevent race conditions
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    setEditingSchema(newSchema);
     onChange(newSchema);
+  };
+
+  // Immediate update for property keys with validation
+  const updatePropertyKeyImmediate = (parentPath, parentObj, oldKey, newKey) => {
+    if (oldKey === newKey) return;
+    
+    // Validation: check for empty or duplicate keys
+    if (!newKey.trim()) {
+      alert('Property name cannot be empty');
+      return;
+    }
+    
+    if (newKey !== oldKey && parentObj.hasOwnProperty(newKey)) {
+      alert(`Property "${newKey}" already exists. Please choose a different name.`);
+      return;
+    }
+    
+    const { [oldKey]: value, ...rest } = parentObj;
+    const newObj = { ...rest, [newKey]: value };
+    
+    if (parentPath === 'root') {
+      updateSchemaImmediate(newObj);
+    } else {
+      const newSchema = { ...editingSchema };
+      setNestedProperty(newSchema, parentPath, newObj);
+      updateSchemaImmediate(newSchema);
+    }
   };
 
   const addProperty = (parentPath, parentObj) => {
@@ -40,11 +99,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     const newObj = { ...parentObj, [newKey]: 'string' };
     
     if (parentPath === 'root') {
-      updateSchema(newObj);
+      updateSchemaImmediate(newObj);
     } else {
       const newSchema = { ...editingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
-      updateSchema(newSchema);
+      updateSchemaImmediate(newSchema);
     }
   };
 
@@ -52,11 +111,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     const { [keyToRemove]: removed, ...newObj } = parentObj;
     
     if (parentPath === 'root') {
-      updateSchema(newObj);
+      updateSchemaImmediate(newObj);
     } else {
       const newSchema = { ...editingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
-      updateSchema(newSchema);
+      updateSchemaImmediate(newSchema);
     }
   };
 
@@ -111,11 +170,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     const newObj = { ...parentObj, [key]: newValue };
     
     if (parentPath === 'root') {
-      updateSchema(newObj);
+      updateSchemaImmediate(newObj);
     } else {
       const newSchema = { ...editingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
-      updateSchema(newSchema);
+      updateSchemaImmediate(newSchema);
     }
   };
 
@@ -170,8 +229,15 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
               placeholder="Property name"
               value={key}
               onChange={(e) => updatePropertyKey(path, parentObj, key, e.target.value)}
+              onBlur={(e) => {
+                // Force immediate update on blur to ensure changes are saved
+                const newKey = e.target.value;
+                if (newKey !== key && newKey.trim()) {
+                  updatePropertyKeyImmediate(path, parentObj, key, newKey);
+                }
+              }}
               className="h-8 text-sm font-mono"
-              style={{ maxWidth: '150px' }}
+              style={{ minWidth: '180px', maxWidth: '240px' }}
             />
             
             <select
@@ -241,11 +307,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                 const newObj = { ...parentObj, [key]: newArray };
                 
                 if (path === 'root') {
-                  updateSchema(newObj);
+                  updateSchemaImmediate(newObj);
                 } else {
                   const newSchema = { ...editingSchema };
                   setNestedProperty(newSchema, path, newObj);
-                  updateSchema(newSchema);
+                  updateSchemaImmediate(newSchema);
                 }
               }}
               className="h-8 px-2 text-sm border border-input rounded"
@@ -293,7 +359,32 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                             updateSchema(newSchema);
                           }
                         }}
-                        className="h-6 text-xs font-mono flex-1"
+                        onBlur={(e) => {
+                          // Force immediate update on blur to ensure changes are saved
+                          const newItemKey = e.target.value;
+                          if (newItemKey !== itemKey && newItemKey.trim()) {
+                            // Validation for array item properties
+                            if (newItemKey !== itemKey && value[0].hasOwnProperty(newItemKey)) {
+                              alert(`Property "${newItemKey}" already exists in array item structure.`);
+                              return;
+                            }
+                            
+                            const { [itemKey]: itemVal, ...rest } = value[0];
+                            const newItemObj = { ...rest, [newItemKey]: itemVal };
+                            const newArray = [newItemObj];
+                            const newObj = { ...parentObj, [key]: newArray };
+                            
+                            if (path === 'root') {
+                              updateSchemaImmediate(newObj);
+                            } else {
+                              const newSchema = { ...editingSchema };
+                              setNestedProperty(newSchema, path, newObj);
+                              updateSchemaImmediate(newSchema);
+                            }
+                          }
+                        }}
+                        className="h-6 text-xs font-mono"
+                        style={{ minWidth: '140px', maxWidth: '200px' }}
                       />
                       
                       <select
@@ -313,11 +404,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                           const newObj = { ...parentObj, [key]: newArray };
                           
                           if (path === 'root') {
-                            updateSchema(newObj);
+                            updateSchemaImmediate(newObj);
                           } else {
                             const newSchema = { ...editingSchema };
                             setNestedProperty(newSchema, path, newObj);
-                            updateSchema(newSchema);
+                            updateSchemaImmediate(newSchema);
                           }
                         }}
                         className="h-6 px-1 text-xs border border-input rounded"
@@ -337,11 +428,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                           const newObj = { ...parentObj, [key]: newArray };
                           
                           if (path === 'root') {
-                            updateSchema(newObj);
+                            updateSchemaImmediate(newObj);
                           } else {
                             const newSchema = { ...editingSchema };
                             setNestedProperty(newSchema, path, newObj);
-                            updateSchema(newSchema);
+                            updateSchemaImmediate(newSchema);
                           }
                         }}
                         className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
@@ -369,11 +460,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                     const newObj = { ...parentObj, [key]: newArray };
                     
                     if (path === 'root') {
-                      updateSchema(newObj);
+                      updateSchemaImmediate(newObj);
                     } else {
                       const newSchema = { ...editingSchema };
                       setNestedProperty(newSchema, path, newObj);
-                      updateSchema(newSchema);
+                      updateSchemaImmediate(newSchema);
                     }
                   }}
                   className="h-6 text-xs"
