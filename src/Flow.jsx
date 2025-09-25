@@ -11,14 +11,15 @@ import 'reactflow/dist/style.css';
 
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
-import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { Input } from './components/ui/input';
+import { Badge } from './components/ui/badge';
+import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle, Edit2, Check, X, Tag } from 'lucide-react';
 import { workflowAPI, AutoSaver } from './lib/api';
 
 import DataNode from './components/nodes/DataNode';
 import ProcessNode from './components/nodes/ProcessNode';
 import NodeInspector from './components/NodeInspector';
 import CreateNodeForm from './components/CreateNodeForm';
-import WorkflowEditor from './components/WorkflowEditor';
 
 // Node types configuration
 
@@ -437,6 +438,12 @@ function Flow({ workflow, workflowId, onBackToManager }) {
   const [lastSaved, setLastSaved] = useState(null);
   const autoSaverRef = useRef(null);
   const currentVersionRef = useRef(workflow?.version || 1);
+  
+  // Workflow editing state
+  const [isEditingWorkflow, setIsEditingWorkflow] = useState(false);
+  const [tempName, setTempName] = useState('');
+  const [tempTags, setTempTags] = useState('');
+  const [workflowUpdateLoading, setWorkflowUpdateLoading] = useState(false);
 
   // Auto-save setup and cleanup
   useEffect(() => {
@@ -918,6 +925,59 @@ function Flow({ workflow, workflowId, onBackToManager }) {
     }
   };
 
+  // Workflow editing functions
+  const handleEditWorkflow = () => {
+    setTempName(currentWorkflow?.name || '');
+    setTempTags((currentWorkflow?.tags || []).join(', '));
+    setIsEditingWorkflow(true);
+  };
+
+  const handleSaveWorkflow = async () => {
+    if (!currentWorkflow || (!tempName.trim() && !tempTags.trim())) {
+      setIsEditingWorkflow(false);
+      return;
+    }
+
+    try {
+      setWorkflowUpdateLoading(true);
+      const updates = {};
+      
+      if (tempName.trim() && tempName.trim() !== currentWorkflow.name) {
+        updates.name = tempName.trim();
+      }
+      
+      const newTags = tempTags
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0);
+      
+      const currentTagsStr = (currentWorkflow.tags || []).join(', ');
+      if (newTags.join(', ') !== currentTagsStr) {
+        updates.tags = newTags;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates.version = currentWorkflow.version;
+        const updatedWorkflow = await workflowAPI.update(currentWorkflow.id, updates);
+        setCurrentWorkflow(updatedWorkflow);
+        currentVersionRef.current = updatedWorkflow.version;
+      }
+      
+      setIsEditingWorkflow(false);
+    } catch (error) {
+      console.error('Failed to update workflow:', error);
+      alert('Failed to update workflow');
+    } finally {
+      setWorkflowUpdateLoading(false);
+    }
+  };
+
+  const handleCancelWorkflowEdit = () => {
+    setTempName(currentWorkflow?.name || '');
+    setTempTags((currentWorkflow?.tags || []).join(', '));
+    setIsEditingWorkflow(false);
+  };
+
   return (
     <div className="w-screen h-screen flex flex-col">
       {/* Top Bar */}
@@ -937,9 +997,75 @@ function Flow({ workflow, workflowId, onBackToManager }) {
             
             {/* Title and Save Status */}
             <div className="flex items-center gap-3">
-              <div className="text-lg font-semibold">
-                {currentWorkflow?.name || 'KYB/KYC Flow Builder'}
-              </div>
+              {!isEditingWorkflow ? (
+                <div className="flex items-center gap-2">
+                  <div className="text-lg font-semibold">
+                    {currentWorkflow?.name || 'KYB/KYC Flow Builder'}
+                  </div>
+                  {currentWorkflow && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleEditWorkflow}
+                      className="h-6 w-6 p-1 text-gray-500 hover:text-gray-700"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                  {currentWorkflow?.tags && currentWorkflow.tags.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      {currentWorkflow.tags.slice(0, 3).map((tag, index) => (
+                        <Badge key={index} variant="secondary" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                      {currentWorkflow.tags.length > 3 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{currentWorkflow.tags.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    placeholder="Workflow name"
+                    className="text-lg font-semibold h-8 border-gray-300"
+                    style={{ width: `${Math.max(tempName.length * 8 + 40, 200)}px` }}
+                  />
+                  <Input
+                    value={tempTags}
+                    onChange={(e) => setTempTags(e.target.value)}
+                    placeholder="Tags (comma separated)"
+                    className="h-8 text-sm border-gray-300"
+                    style={{ width: `${Math.max(tempTags.length * 6 + 60, 150)}px` }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSaveWorkflow}
+                    disabled={workflowUpdateLoading}
+                    className="h-6 w-6 p-1"
+                  >
+                    {workflowUpdateLoading ? (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
+                    ) : (
+                      <Check className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancelWorkflowEdit}
+                    disabled={workflowUpdateLoading}
+                    className="h-6 w-6 p-1"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
               
               {workflowId && (
                 <div className="flex items-center gap-2 text-sm">
@@ -1059,20 +1185,8 @@ function Flow({ workflow, workflowId, onBackToManager }) {
 
         <div className="w-80 flex-shrink-0 border-l bg-gray-50">
           <div className="h-full overflow-y-auto">
-            {/* Workflow Editor */}
-            {currentWorkflow && (
-              <div className="p-4 border-b">
-                <WorkflowEditor
-                  workflow={currentWorkflow}
-                  onUpdate={(updatedWorkflow) => {
-                    setCurrentWorkflow(updatedWorkflow);
-                  }}
-                />
-              </div>
-            )}
-            
             {/* Node Inspector */}
-            <Card className="rounded-none border-0 border-t">
+            <Card className="rounded-none border-0">
               <CardHeader className="border-b">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Settings2 className="w-4 h-4" /> Node Inspector
