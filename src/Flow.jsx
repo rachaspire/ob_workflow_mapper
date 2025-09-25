@@ -13,8 +13,9 @@ import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Input } from './components/ui/input';
 import { Badge } from './components/ui/badge';
-import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle, Edit2, Check, X, Tag } from 'lucide-react';
+import { Plus, Settings2, LayoutGrid, Download, ArrowLeft, Save, AlertCircle, Edit2, Check, X, Tag, GripVertical } from 'lucide-react';
 import { workflowAPI, AutoSaver } from './lib/api';
+import { useResizablePanel } from './hooks/useResizablePanel';
 
 import DataNode from './components/nodes/DataNode';
 import ProcessNode from './components/nodes/ProcessNode';
@@ -411,6 +412,9 @@ const initialEdges = [
 
 function Flow({ workflow, workflowId, onBackToManager }) {
   const [currentWorkflow, setCurrentWorkflow] = useState(workflow);
+
+  // Resizable panel hook for node inspector
+  const { width: inspectorWidth, isDragging, resizeHandleProps } = useResizablePanel(320, 280, 50);
 
   // Sync currentWorkflow with workflow prop changes
   useEffect(() => {
@@ -1219,44 +1223,61 @@ function Flow({ workflow, workflowId, onBackToManager }) {
 
       {/* Canvas + Inspector */}
       <div className="flex-1 flex min-h-0">
-        <div className="flex-1 border-r">
-              <ReactFlow
-                nodes={nodes.map(node => ({
-                  ...node,
-                  style: {
-                    ...node.style,
-                    opacity: highlightedNodes.size === 0 || highlightedNodes.has(node.id) ? 1 : 0.3,
-                    transition: 'opacity 0.2s ease-in-out'
-                  }
-                }))}
-                edges={edges.map(edge => ({
-                  ...edge,
-                  style: {
-                    ...edge.style,
-                    opacity: highlightedNodes.size === 0 || 
-                             (highlightedNodes.has(edge.source) && highlightedNodes.has(edge.target)) ? 1 : 0.2,
-                    transition: 'opacity 0.2s ease-in-out'
-                  }
-                }))}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                nodeTypes={nodeTypes}
-                fitView
-                className="w-full h-full"
-              >
+        <div className="flex-1 border-r" style={{ marginRight: inspectorWidth }}>
+          <ReactFlow
+            nodes={nodes.map(node => ({
+              ...node,
+              style: {
+                ...node.style,
+                opacity: highlightedNodes.size === 0 || highlightedNodes.has(node.id) ? 1 : 0.3,
+                transition: 'opacity 0.2s ease-in-out'
+              }
+            }))}
+            edges={edges.map(edge => ({
+              ...edge,
+              style: {
+                ...edge.style,
+                opacity: highlightedNodes.size === 0 || 
+                         (highlightedNodes.has(edge.source) && highlightedNodes.has(edge.target)) ? 1 : 0.2,
+                transition: 'opacity 0.2s ease-in-out'
+              }
+            }))}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            nodeTypes={nodeTypes}
+            fitView
+            className="w-full h-full"
+          >
             <MiniMap pannable zoomable />
             <Controls showInteractive={false} />
             <Background />
           </ReactFlow>
         </div>
 
-        <div className="w-80 flex-shrink-0 border-l bg-gray-50">
-          <div className="h-full overflow-y-auto">
+        {/* Resizable Node Inspector Panel */}
+        <div 
+          className="flex-shrink-0 bg-gray-50 fixed right-0 top-0 bottom-0 flex"
+          style={{ width: inspectorWidth }}
+        >
+          {/* Resize Handle */}
+          <div
+            className={`w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize flex items-center justify-center group transition-colors ${
+              isDragging ? 'bg-blue-500' : ''
+            }`}
+            {...resizeHandleProps}
+          >
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <GripVertical className="w-3 h-3 text-white" />
+            </div>
+          </div>
+          
+          {/* Inspector Content */}
+          <div className="flex-1 h-full overflow-y-auto">
             {/* Node Inspector */}
-            <Card className="rounded-none border-0">
+            <Card className="rounded-none border-0 h-full">
               <CardHeader className="border-b">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Settings2 className="w-4 h-4" /> Node Inspector
