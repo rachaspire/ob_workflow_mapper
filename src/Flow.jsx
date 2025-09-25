@@ -933,7 +933,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
   };
 
   const handleSaveWorkflow = async () => {
-    if (!currentWorkflow || (!tempName.trim() && !tempTags.trim())) {
+    if (!currentWorkflow) {
       setIsEditingWorkflow(false);
       return;
     }
@@ -942,31 +942,48 @@ function Flow({ workflow, workflowId, onBackToManager }) {
       setWorkflowUpdateLoading(true);
       const updates = {};
       
-      if (tempName.trim() && tempName.trim() !== currentWorkflow.name) {
-        updates.name = tempName.trim();
+      // Check for name changes (allow clearing the name)
+      if (tempName.trim() !== currentWorkflow.name) {
+        updates.name = tempName.trim() || 'Untitled Workflow';
       }
       
+      // Check for tag changes
       const newTags = tempTags
         .split(',')
         .map(tag => tag.trim())
         .filter(tag => tag.length > 0);
       
       const currentTagsStr = (currentWorkflow.tags || []).join(', ');
-      if (newTags.join(', ') !== currentTagsStr) {
+      const newTagsStr = newTags.join(', ');
+      if (newTagsStr !== currentTagsStr) {
         updates.tags = newTags;
       }
+
+      console.log('Workflow update payload:', {
+        workflowId: currentWorkflow.id,
+        updates,
+        hasChanges: Object.keys(updates).length > 0
+      });
 
       if (Object.keys(updates).length > 0) {
         updates.version = currentWorkflow.version;
         const updatedWorkflow = await workflowAPI.update(currentWorkflow.id, updates);
         setCurrentWorkflow(updatedWorkflow);
         currentVersionRef.current = updatedWorkflow.version;
+        console.log('Workflow updated successfully:', updatedWorkflow.name);
+      } else {
+        console.log('No changes detected, skipping update');
       }
       
       setIsEditingWorkflow(false);
     } catch (error) {
-      console.error('Failed to update workflow:', error);
-      alert('Failed to update workflow');
+      console.error('Failed to update workflow - full error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
+      alert(`Failed to update workflow: ${error.response?.data?.error || error.message || 'Unknown error'}`);
     } finally {
       setWorkflowUpdateLoading(false);
     }
