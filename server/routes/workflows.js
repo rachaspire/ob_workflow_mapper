@@ -395,10 +395,25 @@ router.post('/import', async (req, res) => {
       });
     }
     
-    // Add edges if available
+    // Add edges if available (check multiple possible locations for compatibility)
+    let edges = [];
     if (exportData.edges) {
-      canvas.edges = exportData.edges;
+      edges = exportData.edges;
+    } else if (exportData.connections) {
+      edges = exportData.connections;
+    } else if (exportData.flow?.edges) {
+      edges = exportData.flow.edges;
+    } else if (exportData.flow?.connections) {
+      edges = exportData.flow.connections;
     }
+    
+    // Normalize edge format and validate required fields
+    canvas.edges = edges.filter(edge => edge.source && edge.target).map(edge => ({
+      id: edge.id || `e-${edge.source}-${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+      ...edge
+    }));
     
     // Update metadata with current stats
     canvas.metadata.totalNodes = canvas.nodes.length;

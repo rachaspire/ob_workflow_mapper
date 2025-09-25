@@ -18,6 +18,7 @@ import DataNode from './components/nodes/DataNode';
 import ProcessNode from './components/nodes/ProcessNode';
 import NodeInspector from './components/NodeInspector';
 import CreateNodeForm from './components/CreateNodeForm';
+import WorkflowEditor from './components/WorkflowEditor';
 
 // Node types configuration
 
@@ -408,6 +409,12 @@ const initialEdges = [
 ];
 
 function Flow({ workflow, workflowId, onBackToManager }) {
+  const [currentWorkflow, setCurrentWorkflow] = useState(workflow);
+
+  // Sync currentWorkflow with workflow prop changes
+  useEffect(() => {
+    setCurrentWorkflow(workflow);
+  }, [workflow]);
   // Initialize nodes and edges from workflow or use defaults
   const getInitialData = () => {
     if (workflow?.canvas) {
@@ -464,7 +471,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
         nodes,
         edges,
         metadata: {
-          flowName: workflow?.name || 'Untitled Workflow',
+          flowName: currentWorkflow?.name || 'Untitled Workflow',
           version: "1.0",
           totalNodes: nodes.length,
           totalEdges: edges.length,
@@ -474,7 +481,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
       
       autoSaverRef.current.schedule(canvas, currentVersionRef.current);
     }
-  }, [nodes, edges, workflowId, workflow?.name]);
+  }, [nodes, edges, workflowId, currentWorkflow?.name]);
 
   // Manual save function
   const handleManualSave = async () => {
@@ -486,7 +493,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
         nodes,
         edges,
         metadata: {
-          flowName: workflow?.name || 'Untitled Workflow',
+          flowName: currentWorkflow?.name || 'Untitled Workflow',
           version: "1.0",
           totalNodes: nodes.length,
           totalEdges: edges.length,
@@ -931,7 +938,7 @@ function Flow({ workflow, workflowId, onBackToManager }) {
             {/* Title and Save Status */}
             <div className="flex items-center gap-3">
               <div className="text-lg font-semibold">
-                {workflow?.name || 'KYB/KYC Flow Builder'}
+                {currentWorkflow?.name || 'KYB/KYC Flow Builder'}
               </div>
               
               {workflowId && (
@@ -1050,37 +1057,52 @@ function Flow({ workflow, workflowId, onBackToManager }) {
           </ReactFlow>
         </div>
 
-        <div className="w-80 flex-shrink-0">
-          <Card className="h-full rounded-none border-0">
-            <CardHeader className="border-b">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Settings2 className="w-4 h-4" /> Inspector
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 h-full overflow-y-auto">
-              {!selectedNode ? (
-                <div className="text-sm text-muted-foreground">
-                  Select a node to edit properties, run processes, or manage data.
-                </div>
-              ) : (
-                <NodeInspector
-                  node={selectedNode}
-                  nodes={nodes}
-                  onUpdate={(updatedData) => {
-                    setNodes((nds) =>
-                      nds.map((n) =>
-                        n.id === selectedNode.id
-                          ? { ...n, data: { ...n.data, ...updatedData } }
-                          : n
-                      )
-                    );
-                    setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ...updatedData } });
+        <div className="w-80 flex-shrink-0 border-l bg-gray-50">
+          <div className="h-full overflow-y-auto">
+            {/* Workflow Editor */}
+            {currentWorkflow && (
+              <div className="p-4 border-b">
+                <WorkflowEditor
+                  workflow={currentWorkflow}
+                  onUpdate={(updatedWorkflow) => {
+                    setCurrentWorkflow(updatedWorkflow);
                   }}
-                  onConnect={handleAutoConnect}
                 />
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+            
+            {/* Node Inspector */}
+            <Card className="rounded-none border-0 border-t">
+              <CardHeader className="border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Settings2 className="w-4 h-4" /> Node Inspector
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                {!selectedNode ? (
+                  <div className="text-sm text-muted-foreground">
+                    Select a node to edit properties, run processes, or manage data.
+                  </div>
+                ) : (
+                  <NodeInspector
+                    node={selectedNode}
+                    nodes={nodes}
+                    onUpdate={(updatedData) => {
+                      setNodes((nds) =>
+                        nds.map((n) =>
+                          n.id === selectedNode.id
+                            ? { ...n, data: { ...n.data, ...updatedData } }
+                            : n
+                        )
+                      );
+                      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, ...updatedData } });
+                    }}
+                    onConnect={handleAutoConnect}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
