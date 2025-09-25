@@ -7,10 +7,12 @@ import { Plus, Trash2, ChevronDown, ChevronRight, FileJson } from 'lucide-react'
 const JsonSchemaEditor = ({ schema = {}, onChange }) => {
   const [expandedPaths, setExpandedPaths] = useState(new Set(['root']));
   const [editingSchema, setEditingSchema] = useState(schema);
+  const [localEditingSchema, setLocalEditingSchema] = useState(schema);
   const debounceTimeoutRef = useRef(null);
 
   useEffect(() => {
     setEditingSchema(schema);
+    setLocalEditingSchema(schema);
   }, [schema]);
 
   // Cleanup timeout on unmount
@@ -45,6 +47,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
 
   const updateSchema = (newSchema) => {
     setEditingSchema(newSchema);
+    setLocalEditingSchema(newSchema); // Keep local state in sync
     debouncedOnChange(newSchema);
   };
 
@@ -56,6 +59,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
       debounceTimeoutRef.current = null;
     }
     setEditingSchema(newSchema);
+    setLocalEditingSchema(newSchema); // Keep local state in sync
     onChange(newSchema);
   };
 
@@ -80,7 +84,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     if (parentPath === 'root') {
       updateSchemaImmediate(newObj);
     } else {
-      const newSchema = { ...editingSchema };
+      const newSchema = { ...localEditingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
       updateSchemaImmediate(newSchema);
     }
@@ -101,7 +105,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     if (parentPath === 'root') {
       updateSchemaImmediate(newObj);
     } else {
-      const newSchema = { ...editingSchema };
+      const newSchema = { ...localEditingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
       updateSchemaImmediate(newSchema);
     }
@@ -113,9 +117,25 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     if (parentPath === 'root') {
       updateSchemaImmediate(newObj);
     } else {
-      const newSchema = { ...editingSchema };
+      const newSchema = { ...localEditingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
       updateSchemaImmediate(newSchema);
+    }
+  };
+
+  // Live update for property keys during typing (local only, no saving)
+  const updatePropertyKeyLive = (parentPath, parentObj, oldKey, newKey) => {
+    if (oldKey === newKey) return;
+    
+    const { [oldKey]: value, ...rest } = parentObj;
+    const newObj = { ...rest, [newKey]: value };
+    
+    if (parentPath === 'root') {
+      setLocalEditingSchema(newObj);
+    } else {
+      const newSchema = { ...localEditingSchema };
+      setNestedProperty(newSchema, parentPath, newObj);
+      setLocalEditingSchema(newSchema);
     }
   };
 
@@ -139,7 +159,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     if (parentPath === 'root') {
       updateSchema(newObj);
     } else {
-      const newSchema = { ...editingSchema };
+      const newSchema = { ...localEditingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
       updateSchema(newSchema);
     }
@@ -172,7 +192,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
     if (parentPath === 'root') {
       updateSchemaImmediate(newObj);
     } else {
-      const newSchema = { ...editingSchema };
+      const newSchema = { ...localEditingSchema };
       setNestedProperty(newSchema, parentPath, newObj);
       updateSchemaImmediate(newSchema);
     }
@@ -228,9 +248,9 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
             <Input
               placeholder="Property name"
               value={key}
-              onChange={(e) => updatePropertyKey(path, parentObj, key, e.target.value)}
+              onChange={(e) => updatePropertyKeyLive(path, parentObj, key, e.target.value)}
               onBlur={(e) => {
-                // Force immediate update on blur to ensure changes are saved
+                // Force immediate update on blur to ensure changes are saved with validation
                 const newKey = e.target.value;
                 if (newKey !== key && newKey.trim()) {
                   updatePropertyKeyImmediate(path, parentObj, key, newKey);
@@ -309,7 +329,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                 if (path === 'root') {
                   updateSchemaImmediate(newObj);
                 } else {
-                  const newSchema = { ...editingSchema };
+                  const newSchema = { ...localEditingSchema };
                   setNestedProperty(newSchema, path, newObj);
                   updateSchemaImmediate(newSchema);
                 }
@@ -335,28 +355,18 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                           const newItemKey = e.target.value;
                           if (newItemKey === itemKey) return;
                           
-                          // Validation for array item properties
-                          if (!newItemKey.trim()) {
-                            alert('Property name cannot be empty');
-                            return;
-                          }
-                          
-                          if (newItemKey !== itemKey && value[0].hasOwnProperty(newItemKey)) {
-                            alert(`Property "${newItemKey}" already exists in array item structure.`);
-                            return;
-                          }
-                          
+                          // Live update without validation during typing (local only)
                           const { [itemKey]: itemVal, ...rest } = value[0];
                           const newItemObj = { ...rest, [newItemKey]: itemVal };
                           const newArray = [newItemObj];
                           const newObj = { ...parentObj, [key]: newArray };
                           
                           if (path === 'root') {
-                            updateSchema(newObj);
+                            setLocalEditingSchema(newObj);
                           } else {
-                            const newSchema = { ...editingSchema };
+                            const newSchema = { ...localEditingSchema };
                             setNestedProperty(newSchema, path, newObj);
-                            updateSchema(newSchema);
+                            setLocalEditingSchema(newSchema);
                           }
                         }}
                         onBlur={(e) => {
@@ -377,7 +387,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                             if (path === 'root') {
                               updateSchemaImmediate(newObj);
                             } else {
-                              const newSchema = { ...editingSchema };
+                              const newSchema = { ...localEditingSchema };
                               setNestedProperty(newSchema, path, newObj);
                               updateSchemaImmediate(newSchema);
                             }
@@ -406,7 +416,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                           if (path === 'root') {
                             updateSchemaImmediate(newObj);
                           } else {
-                            const newSchema = { ...editingSchema };
+                            const newSchema = { ...localEditingSchema };
                             setNestedProperty(newSchema, path, newObj);
                             updateSchemaImmediate(newSchema);
                           }
@@ -430,7 +440,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                           if (path === 'root') {
                             updateSchemaImmediate(newObj);
                           } else {
-                            const newSchema = { ...editingSchema };
+                            const newSchema = { ...localEditingSchema };
                             setNestedProperty(newSchema, path, newObj);
                             updateSchemaImmediate(newSchema);
                           }
@@ -462,7 +472,7 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
                     if (path === 'root') {
                       updateSchemaImmediate(newObj);
                     } else {
-                      const newSchema = { ...editingSchema };
+                      const newSchema = { ...localEditingSchema };
                       setNestedProperty(newSchema, path, newObj);
                       updateSchemaImmediate(newSchema);
                     }
@@ -487,13 +497,13 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
         <Label className="font-medium">JSON Data Structure</Label>
       </div>
       
-      {Object.keys(editingSchema).length === 0 ? (
+      {Object.keys(localEditingSchema).length === 0 ? (
         <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
           <FileJson className="h-8 w-8 text-gray-400 mx-auto mb-2" />
           <div className="text-gray-600 text-sm mb-3">No data structure defined yet</div>
           <Button
             size="sm"
-            onClick={() => addProperty('root', editingSchema)}
+            onClick={() => addProperty('root', localEditingSchema)}
           >
             <Plus className="h-3 w-3 mr-1" />
             Add First Property
@@ -501,13 +511,13 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
         </div>
       ) : (
         <div className="space-y-2">
-          {Object.entries(editingSchema).map(([key, value]) =>
-            renderProperty(key, value, 'root', editingSchema, 0)
+          {Object.entries(localEditingSchema).map(([key, value]) =>
+            renderProperty(key, value, 'root', localEditingSchema, 0)
           )}
           <Button
             size="sm"
             variant="outline"
-            onClick={() => addProperty('root', editingSchema)}
+            onClick={() => addProperty('root', localEditingSchema)}
             className="w-full"
           >
             <Plus className="h-3 w-3 mr-1" />
@@ -516,11 +526,11 @@ const JsonSchemaEditor = ({ schema = {}, onChange }) => {
         </div>
       )}
       
-      {Object.keys(editingSchema).length > 0 && (
+      {Object.keys(localEditingSchema).length > 0 && (
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="text-xs font-medium text-blue-800 mb-1">Preview:</div>
           <pre className="text-xs text-blue-700 font-mono overflow-x-auto">
-            {JSON.stringify(editingSchema, null, 2)}
+            {JSON.stringify(localEditingSchema, null, 2)}
           </pre>
         </div>
       )}
