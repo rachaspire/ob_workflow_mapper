@@ -412,6 +412,7 @@ function Flow() {
   const [selectedNode, setSelectedNode] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createNodeType, setCreateNodeType] = useState('data');
+  const [highlightedNodes, setHighlightedNodes] = useState(new Set());
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
@@ -449,8 +450,42 @@ function Flow() {
     onEdgesChangeDefault(changes);
   }, [edges, setNodes, onEdgesChangeDefault]);
 
+  // Function to find all connected nodes (upstream and downstream)
+  const findConnectedNodes = useCallback((nodeId) => {
+    const connected = new Set([nodeId]);
+    const visited = new Set();
+    
+    const traverse = (currentId, direction = 'both') => {
+      if (visited.has(currentId)) return;
+      visited.add(currentId);
+      connected.add(currentId);
+      
+      edges.forEach(edge => {
+        if (direction !== 'downstream' && edge.target === currentId && !visited.has(edge.source)) {
+          traverse(edge.source, 'upstream');
+        }
+        if (direction !== 'upstream' && edge.source === currentId && !visited.has(edge.target)) {
+          traverse(edge.target, 'downstream');
+        }
+      });
+    };
+    
+    traverse(nodeId);
+    return connected;
+  }, [edges]);
+
   const onNodeClick = useCallback((event, node) => {
     setSelectedNode(node);
+    
+    // Find and highlight connected nodes
+    const connectedNodes = findConnectedNodes(node.id);
+    setHighlightedNodes(connectedNodes);
+  }, [findConnectedNodes]);
+
+  // Clear highlighting when clicking on empty space
+  const onPaneClick = useCallback(() => {
+    setHighlightedNodes(new Set());
+    setSelectedNode(null);
   }, []);
 
   // Helper function to generate unique IDs
@@ -580,6 +615,10 @@ function Flow() {
     });
     
     setNodes(newNodes);
+    
+    // Clear highlighting when formatting
+    setHighlightedNodes(new Set());
+    setSelectedNode(null);
   }, [nodes, edges, setNodes]);
 
   // Export structured JSON function
@@ -796,17 +835,33 @@ function Flow() {
       {/* Canvas + Inspector */}
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 border-r">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            nodeTypes={nodeTypes}
-            fitView
-            className="w-full h-full"
-          >
+              <ReactFlow
+                nodes={nodes.map(node => ({
+                  ...node,
+                  style: {
+                    ...node.style,
+                    opacity: highlightedNodes.size === 0 || highlightedNodes.has(node.id) ? 1 : 0.3,
+                    transition: 'opacity 0.2s ease-in-out'
+                  }
+                }))}
+                edges={edges.map(edge => ({
+                  ...edge,
+                  style: {
+                    ...edge.style,
+                    opacity: highlightedNodes.size === 0 || 
+                             (highlightedNodes.has(edge.source) && highlightedNodes.has(edge.target)) ? 1 : 0.2,
+                    transition: 'opacity 0.2s ease-in-out'
+                  }
+                }))}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                fitView
+                className="w-full h-full"
+              >
             <MiniMap pannable zoomable />
             <Controls showInteractive={false} />
             <Background />
