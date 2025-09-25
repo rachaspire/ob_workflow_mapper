@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -620,6 +620,18 @@ function Flow() {
     setHighlightedNodes(new Set());
     setSelectedNode(null);
   }, [nodes, edges, setNodes]);
+
+  // Auto-format nodes on component mount
+  useEffect(() => {
+    // Only format if nodes are in their initial positions (not already formatted)
+    const hasDefaultPositions = nodes.some(node => 
+      node.position.x === 50 && [50, 200, 350, 500, 650].includes(node.position.y)
+    );
+    
+    if (hasDefaultPositions) {
+      formatNodes();
+    }
+  }, []); // Empty dependency array means this runs once on mount
 
   // Export structured JSON function
   const exportFlowJSON = useCallback(() => {
