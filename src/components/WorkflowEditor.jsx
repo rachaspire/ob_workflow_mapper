@@ -4,15 +4,40 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Card, CardContent } from './ui/card';
-import { X, Tag, Plus, Edit2 } from 'lucide-react';
+import { Edit2, Check, X, Tag, Plus } from 'lucide-react';
 import { workflowAPI } from '../lib/api';
 
 function WorkflowEditor({ workflow, onUpdate }) {
+  const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingTags, setIsEditingTags] = useState(false);
+  const [tempName, setTempName] = useState(workflow?.name || '');
   const [tempTags, setTempTags] = useState((workflow?.tags || []).join(', '));
   const [newTag, setNewTag] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const handleNameSave = async () => {
+    if (!tempName.trim() || tempName === workflow?.name) {
+      setIsEditingName(false);
+      setTempName(workflow?.name || '');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const updatedWorkflow = await workflowAPI.update(workflow.id, {
+        name: tempName.trim(),
+        version: workflow.version
+      });
+      onUpdate(updatedWorkflow);
+      setIsEditingName(false);
+    } catch (error) {
+      console.error('Failed to update workflow name:', error);
+      alert('Failed to update workflow name');
+      setTempName(workflow?.name || '');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTagsSave = async () => {
     const newTags = tempTags
@@ -88,6 +113,57 @@ function WorkflowEditor({ workflow, onUpdate }) {
     <Card className="mb-4">
       <CardContent className="p-4">
         <div className="space-y-4">
+          {/* Workflow Name */}
+          <div>
+            <Label className="text-sm font-medium text-gray-700 mb-2 block">
+              Workflow Name
+            </Label>
+            {isEditingName ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleNameSave()}
+                  className="flex-1"
+                  autoFocus
+                  disabled={loading}
+                />
+                <Button
+                  size="sm"
+                  onClick={handleNameSave}
+                  disabled={loading || !tempName.trim()}
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditingName(false);
+                    setTempName(workflow.name);
+                  }}
+                  disabled={loading}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-lg font-semibold">{workflow.name}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditingName(true);
+                    setTempName(workflow.name);
+                  }}
+                  disabled={loading}
+                >
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
 
           {/* Tags */}
           <div>
