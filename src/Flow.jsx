@@ -940,41 +940,84 @@ function Flow({ workflow, workflowId, onBackToManager }) {
 
     try {
       setWorkflowUpdateLoading(true);
-      const updates = {};
       
-      // Check for name changes (allow clearing the name)
-      if (tempName.trim() !== currentWorkflow.name) {
-        updates.name = tempName.trim() || 'Untitled Workflow';
+      // Stop auto-save during manual update to prevent version conflicts
+      if (autoSaverRef.current) {
+        autoSaverRef.current.stop();
       }
       
-      // Check for tag changes
-      const newTags = tempTags
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(tag => tag.length > 0);
+      // Retry logic for version conflicts
+      let retryCount = 0;
+      const maxRetries = 2;
       
-      const currentTagsStr = (currentWorkflow.tags || []).join(', ');
-      const newTagsStr = newTags.join(', ');
-      if (newTagsStr !== currentTagsStr) {
-        updates.tags = newTags;
-      }
+      while (retryCount <= maxRetries) {
+        try {
+          // Fetch the latest workflow data to get current version
+          const latestWorkflow = await workflowAPI.get(currentWorkflow.id);
+          
+          const updates = {};
+          
+          // Check for name changes (allow clearing the name)
+          if (tempName.trim() !== latestWorkflow.name) {
+            updates.name = tempName.trim() || 'Untitled Workflow';
+          }
+          
+          // Check for tag changes
+          const newTags = tempTags
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag.length > 0);
+          
+          const currentTagsStr = (latestWorkflow.tags || []).join(', ');
+          const newTagsStr = newTags.join(', ');
+          if (newTagsStr !== currentTagsStr) {
+            updates.tags = newTags;
+          }
 
-      console.log('Workflow update payload:', {
-        workflowId: currentWorkflow.id,
-        updates,
-        hasChanges: Object.keys(updates).length > 0
-      });
+          console.log('Workflow update payload:', {
+            workflowId: latestWorkflow.id,
+            currentVersion: latestWorkflow.version,
+            updates,
+            hasChanges: Object.keys(updates).length > 0,
+            retryCount
+          });
 
-      if (Object.keys(updates).length > 0) {
-        updates.version = currentWorkflow.version;
-        const updatedWorkflow = await workflowAPI.update(currentWorkflow.id, updates);
-        setCurrentWorkflow(updatedWorkflow);
-        currentVersionRef.current = updatedWorkflow.version;
-        console.log('Workflow updated successfully:', updatedWorkflow.name);
-      } else {
-        console.log('No changes detected, skipping update');
+          if (Object.keys(updates).length > 0) {
+            updates.version = latestWorkflow.version; // Use latest version
+            const updatedWorkflow = await workflowAPI.update(latestWorkflow.id, updates);
+            setCurrentWorkflow(updatedWorkflow);
+            currentVersionRef.current = updatedWorkflow.version;
+            console.log('Workflow updated successfully:', updatedWorkflow.name);
+          } else {
+            console.log('No changes detected, syncing to latest version');
+            // Even with no changes, sync to latest version to prevent future conflicts
+            setCurrentWorkflow(latestWorkflow);
+            currentVersionRef.current = latestWorkflow.version;
+          }
+          
+          // Success - break out of retry loop
+          break;
+          
+        } catch (updateError) {
+          // Check for version conflict by message or HTTP status code
+          const isVersionConflict = updateError.message === 'Version conflict' || 
+                                  updateError.status === 409 ||
+                                  updateError.response?.status === 409;
+                                  
+          if (isVersionConflict && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Version conflict, retrying (${retryCount}/${maxRetries})...`);
+            // Wait a brief moment before retrying
+            await new Promise(resolve => setTimeout(resolve, 100));
+            continue;
+          } else {
+            // Re-throw if not a version conflict or max retries exceeded
+            throw updateError;
+          }
+        }
       }
       
+      // Success - exit edit mode
       setIsEditingWorkflow(false);
     } catch (error) {
       console.error('Failed to update workflow - full error:', {
@@ -983,8 +1026,18 @@ function Flow({ workflow, workflowId, onBackToManager }) {
         status: error.response?.status,
         stack: error.stack
       });
-      alert(`Failed to update workflow: ${error.response?.data?.error || error.message || 'Unknown error'}`);
+      
+      // Keep edit mode open so user can retry
+      const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+      alert(`Failed to update workflow after retries: ${errorMessage}\n\nPlease try again or check for conflicts with other sessions.`);
+      
+      // Don't exit edit mode on failure - let user retry
+      // setIsEditingWorkflow(false);
     } finally {
+      // Always restart auto-save, no matter what happened
+      if (autoSaverRef.current) {
+        autoSaverRef.current.start();
+      }
       setWorkflowUpdateLoading(false);
     }
   };
