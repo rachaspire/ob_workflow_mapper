@@ -499,6 +499,11 @@ function Flow() {
     const nodeMap = new Map(nodes.map(node => [node.id, node]));
     const layers = [];
     
+    // Identify output nodes (green nodes) that should be in the rightmost layer
+    const outputNodes = nodes.filter(node => 
+      node.type === 'dataNode' && node.data.type === 'Output'
+    );
+    
     // Layer 0: Raw input nodes (no source)
     const rawNodes = nodes.filter(node => 
       node.type === 'dataNode' && node.data.type === 'Raw'
@@ -509,7 +514,7 @@ function Flow() {
       node.type === 'processNode' && node.data.processType === 'nested-process'
     );
     
-    // Build dependency graph for remaining nodes
+    // Build dependency graph for remaining nodes (excluding output nodes for now)
     const visited = new Set();
     const layerMap = new Map();
     
@@ -538,6 +543,11 @@ function Flow() {
       
       const node = nodeMap.get(nodeId);
       if (!node) return 0;
+      
+      // Skip output nodes in initial calculation - they'll be placed in the final layer
+      if (node.type === 'dataNode' && node.data.type === 'Output') {
+        return 0; // Temporary value, will be overridden later
+      }
       
       currentPath.add(nodeId);
       
@@ -572,11 +582,26 @@ function Flow() {
       return nodeLayer;
     };
     
-    // Calculate layers for all nodes
+    // Calculate layers for all non-output nodes first
     nodes.forEach(node => {
-      if (!layerMap.has(node.id)) {
+      if (!layerMap.has(node.id) && !(node.type === 'dataNode' && node.data.type === 'Output')) {
         calculateLayer(node.id);
       }
+    });
+    
+    // Find the maximum layer among non-output nodes
+    let maxLayer = 0;
+    layerMap.forEach((layer, nodeId) => {
+      const node = nodeMap.get(nodeId);
+      if (!(node.type === 'dataNode' && node.data.type === 'Output')) {
+        maxLayer = Math.max(maxLayer, layer);
+      }
+    });
+    
+    // Place all output nodes in the rightmost layer (maxLayer + 1)
+    const outputLayer = maxLayer + 1;
+    outputNodes.forEach(node => {
+      layerMap.set(node.id, outputLayer);
     });
     
     // Group nodes by layer
